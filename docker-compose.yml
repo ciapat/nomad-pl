@@ -1,0 +1,29 @@
+services:
+  kiwix:
+    image: ghcr.io/kiwix/kiwix-serve
+    container_name: nomad-wikipedia
+    volumes:
+      - ./data/zim:/data
+    command: "*.zim"
+    ports:
+      - "8081:8080"
+    restart: unless-stopped
+
+  maps:
+    image: protomaps/go-pmtiles
+    container_name: nomad-maps
+    volumes:
+      - ./data/maps:/data
+    command: serve --cors="*" /data
+    ports:
+      - "8082:8080"
+    restart: unless-stopped
+
+  portal:
+    image: nginx:alpine
+    container_name: nomad-portal
+    volumes:
+      - ./portal:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+    restart: unless-stopped

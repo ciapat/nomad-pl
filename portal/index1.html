@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>N.O.M.A.D. PL - Centrum Dowodzenia</title>
+    
+    <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/pmtiles@2.11.0/dist/index.js"></script>
+    <script src="https://unpkg.com/@protomaps/basemaps/dist/basemaps.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; background-color: #f0f0f0; }
+        .header { background: #333; color: white; padding: 15px; text-align: center; }
+        .buttons { display: flex; justify-content: center; gap: 15px; padding: 15px; background: #ddd; }
+        .btn { padding: 10px 20px; background: #0066cc; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+        .btn:hover { background: #005bb5; }
+        #map { width: 100vw; height: calc(100vh - 120px); }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>N.O.M.A.D. PL</h1>
+    </div>
+
+    <div class="buttons">
+        <a href="http://192.168.50.47:8081" class="btn">📚 Otwórz Bazy Wiedzy (Wikipedia)</a>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+        let protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol("pmtiles", protocol.tile);
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            zoom: 6, // Lekko przybliżyłem mapę na starcie
+            center: [19.0, 52.0],
+            style: {
+                version: 8,
+                // NOWOŚĆ: Czcionki dla nazw miast i ulic
+                glyphs: "https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf",
+                sources: {
+                    "protomaps": {
+                        type: "vector",
+                        tiles: ["http://192.168.50.47:8082/polska/{z}/{x}/{y}.mvt"],
+                        maxzoom: 15,
+                        attribution: "N.O.M.A.D. PL | Data © OpenStreetMap"
+                    }
+                },
+                // NOWOŚĆ: Magiczna linijka, która sama generuje setki warstw kolorystycznych ("light" to styl jasny)
+                layers: basemaps.layers("protomaps", basemaps.namedFlavor("light"), {lang: "pl"})
+            }
+        });
+        
+        // NOWOŚĆ: Dodajemy kontrolki zoomu i obrotu w prawym górnym rogu
+        map.addControl(new maplibregl.NavigationControl());
+    </script>
+</body>
+</html>

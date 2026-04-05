@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-width=1.0">
+    <title>N.O.M.A.D. PL - Mapa Taktyczna</title>
+
+    <script src="libs/maplibre-gl.js"></script>
+    <link href="libs/maplibre-gl.css" rel="stylesheet" />
+    <script src="libs/index.js"></script>
+    <script src="libs/basemaps.js"></script>    
+
+    <style>
+        body { margin: 0; padding: 0; font-family: sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+        
+        /* Styl przycisku powrotu */
+        .back-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000; /* Żeby był nad mapą */
+            background-color: rgba(51, 51, 51, 0.9);
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transition: background 0.3s;
+        }
+        .back-btn:hover { background-color: #0066cc; }
+    </style>
+</head>
+<body>
+
+    <a href="index.html" class="back-btn">🔙 Wróć do Centrali</a>
+    <div id="map"></div>
+
+    <script>
+        let protocol = new pmtiles.Protocol();
+        maplibregl.addProtocol("pmtiles", protocol.tile);
+
+        const map = new maplibregl.Map({
+            container: 'map',
+            zoom: 6,
+            center: [19.0, 52.0],
+            style: {
+                version: 8,
+                glyphs: "libs/fonts/{fontstack}/{range}.pbf",
+                sources: {
+                    "protomaps": {
+                        type: "vector",
+                        tiles: ["http://" + window.location.hostname + ":8082/polska/{z}/{x}/{y}.mvt"],
+                        maxzoom: 15,
+                        attribution: "N.O.M.A.D. PL | Data © OpenStreetMap"
+                    }
+                },
+                layers: basemaps.layers("protomaps", basemaps.namedFlavor("light"), {lang: "pl"})
+            }
+        });
+        
+        map.addControl(new maplibregl.NavigationControl());
+    </script>
+</body>
+</html>
