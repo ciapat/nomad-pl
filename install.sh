@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# ==========================================
+# ==============================================
 # Instalator Polskiego Węzła Przetrwania (N.O.M.A.D. PL)
-# ==========================================
+# ==============================================
 
 echo "=========================================="
 echo " Witaj w instalatorze Polskiego N.O.M.A.D."
@@ -10,7 +10,7 @@ echo "=========================================="
 echo ""
 
 # ------------------------------
-# 0. SPRAWDZANIE I INSTALACJA DOCKERA
+# SPRAWDZANIE I INSTALACJA DOCKERA
 # ------------------------------
 echo "[*] Sprawdzanie obecności Dockera..."
 if ! command -v docker &> /dev/null; then
@@ -20,190 +20,168 @@ if ! command -v docker &> /dev/null; then
     sudo usermod -aG docker $USER
     rm get-docker.sh
     echo "[+] Docker i Docker Compose zostały zainstalowane pomyślnie!"
-    DOCKER_INSTALLED_JUST_NOW=true
 else
     echo "[+] Docker jest już zainstalowany. Lecimy dalej."
-    DOCKER_INSTALLED_JUST_NOW=false
 fi
 echo ""
 
 # ------------------------------
-# 1. STRUKTURA KATALOGÓW
+# STRUKTURA KATALOGÓW
 # ------------------------------
 echo "[*] Tworzenie struktury katalogów..."
-mkdir -p nomad-pl/data/zim
-mkdir -p nomad-pl/data/maps
-cd nomad-pl || exit
+sudo mkdir -p data/zim
+sudo mkdir -p data/maps
 
 # ------------------------------
-# 2. WYBÓR WIKIPEDII (KIWIX)
+# WYBÓR WIKIPEDII (KIWIX)
 # ------------------------------
 echo ""
 echo "Wybierz wersję polskiej Wikipedii / bazy wiedzy (Kiwix):"
 echo "1) Wersja ALL MAXI (Pełna wersja, ~20 GB)"
 echo "2) Wersja ALL NOPIC (Wszystkie artykuły, bez zdjęć, ~6.5 GB)"
-echo "3) Wersja TOP MAXI (50 000 artykułów ze zdjęciami (~2.6 GB)"
+echo "3) Wersja TOP MAXI (50 000 artykułów ze zdjęciami, ~2.6 GB)"
 echo "4) Pomiń pobieranie"
 read -p "Twój wybór (1-4): " wiki_choice
 
 # ------------------------------
-# 3. WYBÓR MAP (PROTOMAPS)
+# WYBÓR MAPY (PROTOMAPS)
 # ------------------------------
 echo ""
-echo "Wybierz moduł map offline:"
-echo "1) Pobierz i wygeneruj mapę Polski, ~4 GB"
-echo "2) Pomiń moduł map"
+echo "Wybierz moduł mapy offline:"
+echo "1) Pobierz i wygeneruj mapę Polski (~4 GB)"
+echo "2) Pomiń moduł mapy"
 read -p "Twój wybór (1-2): " map_choice
 
+#-------------------------------
+# ANALIZA NOŚNIKA I OCHRONA TERMICZNA
+#-------------------------------
+echo ""
+echo "[*] Analizuję nośnik danych pod kątem ochrony termicznej..."
+
+PARTITION=$(df -P "$(pwd)" | tail -1 | awk '{print $1}')
+IS_PENDRIVE=$(lsblk -no RM "$PARTITION" 2>/dev/null | head -n 1 | tr -d ' ')
+INTERFACES="eth0 wlan0 usb0"
+
+if [ "$IS_PENDRIVE" = "1" ]; then
+    echo "[!] Wykryto Pendrive lub kartę pamięci (RM=1)."
+    echo "[*] Włączam ochronę termiczną na czas pobierania (limit: ~5 MB/s)."
+    
+    if ! command -v wondershaper &> /dev/null; then
+        sudo curl -sL https://raw.githubusercontent.com/magnific0/wondershaper/master/wondershaper -o /usr/local/bin/wondershaper
+        sudo chmod +x /usr/local/bin/wondershaper
+    fi
+
+    for IFACE in $INTERFACES; do
+        if ip link show "$IFACE" &> /dev/null; then
+            sudo wondershaper -c -a "$IFACE" > /dev/null 2>&1 || true
+            sudo wondershaper -a "$IFACE" -d 50000 -u 50000 > /dev/null 2>&1
+        fi
+    done
+else
+    echo "[!] Wykryto szybki dysk SSD/HDD (RM=0). Pobieram z pełną mocą łącza!"
+fi
+
+# ------------------------------
+# POBIERANIE MAPY
+# ------------------------------
 if [ "$map_choice" == "1" ]; then
+    echo ""
     echo "[*] Przygotowuję narzędzie do wycinania mapy..."
 
-    # Ustalenie  wczorajszej daty
     MAP_DATE=$(date -d "yesterday" +%Y%m%d)
     DATE_FILE="$(pwd)/data/maps/polska_date.txt"
     MAP_FILE="$(pwd)/data/maps/polska.pmtiles"
 
-    # Sprawdzanie daty w pliku txt
     if [ -f "$DATE_FILE" ] && grep -q "$MAP_DATE" "$DATE_FILE"; then
-        echo "[+] Aktualna mapa z dnia $MAP_DATE już istnieje na dysku!"
-        echo "[+] Pomijam ponowne pobieranie."
+        echo "[+] Aktualna mapa z dnia $MAP_DATE już istnieje na dysku. Pomijam."
     else
-        echo "[*] Brak najnowszej mapy. Szukam na serwerze pliku z dnia: $MAP_DATE"
-
-        # Usuwanie starej mapy PRZED pobraniem nowej (żeby nie zapchać dysku)
+        echo "[*] Brak najnowszej mapy. Rozpoczynam wycinanie pliku z dnia: $MAP_DATE"
         if [ -f "$MAP_FILE" ]; then
-            echo "[*] Usuwanie starej wersji mapy, aby zwolnić miejsce na dysku..."
             rm -f "$MAP_FILE"
         fi
 
-        # Wycinanie mapy z zapisem do stałej nazwy polska.pmtiles
+        # NAPRAWIONA KOMENDA WYCINANIA:
         sudo docker run --rm -v $(pwd)/data/maps:/data protomaps/go-pmtiles extract https://build.protomaps.com/${MAP_DATE}.pmtiles /data/polska.pmtiles --bbox=14.0,48.9,24.2,54.9
 
-        # Zmiana uprawnień
         sudo chown $USER:$USER "$MAP_FILE"
-
-        # Zapisanie nowej daty do pliku txt (i zmiana uprawnień)
         echo "$MAP_DATE" > "$DATE_FILE"
         sudo chown $USER:$USER "$DATE_FILE"
-
-        echo "[+] Nowa mapa Polski została pomyślnie wygenerowana!"
+        echo "[+] Nowa mapa Polski gotowa!"
     fi
 fi
-# ------------------------------
-# 4. GENEROWANIE DOCKER-COMPOSE
-# ------------------------------
-echo ""
-echo "[*] Generowanie pliku konfiguracyjnego docker-compose.yml..."
-
-cat <<EOF > docker-compose.yml
-services:
-  kiwix:
-    image: ghcr.io/kiwix/kiwix-serve
-    container_name: nomad-wikipedia
-    volumes:
-      - ./data/zim:/data
-    command: "*.zim"
-    ports:
-      - "8081:8080"
-    restart: unless-stopped
-EOF
-
-#if [ "$map_choice" == "1" ]; then
-cat <<EOF >> docker-compose.yml
-
-  maps:
-    image: protomaps/go-pmtiles
-    container_name: nomad-maps
-    volumes:
-      - ./data/maps:/data
-    command: serve --cors="*" /data
-    ports:
-      - "8082:8080"
-    restart: unless-stopped
-EOF
-#fi
-
-cat <<EOF >> docker-compose.yml
-
-  portal:
-    image: nginx:alpine
-    container_name: nomad-portal
-    volumes:
-      - ./portal:/usr/share/nginx/html:ro
-    ports:
-      - "80:80"
-    restart: unless-stopped
-EOF
-
-echo "[+] Plik docker-compose.yml wygenerowany pomyślnie."
 
 # ------------------------------
-# 5. POBIERANIE BAZY WIEDZY
+# POBIERANIE WIKIPEDII
 # ------------------------------
 echo ""
-echo "[*] Rozpoczynam proces pobierania baz wiedzy (z limitem 5MB/s)..."
-# Limit prędkości dodany, by chronić pendrive'y przed błędem I/O
+echo "[*] Weryfikacja bazy wiedzy..."
 
 case $wiki_choice in
     1)
-        echo "Pobieranie Wikipedii ALL MAXI..."
-        # Zmieniony link na działający symlink do najnowszej wersji mini
-        wget --limit-rate=5m -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_all_maxi_2026-02.zim"
+        echo "[*] Pobieranie Wikipedii ALL MAXI..."
+        wget -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_all_maxi_2026-02.zim"
         ;;
     2)
-        echo "Pobieranie Wikipedii ALL NOPIC..."
-        wget --limit-rate=5m -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_all_nopic_2026-02.zim"
+        echo "[*] Pobieranie Wikipedii ALL NOPIC..."
+        wget -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_all_nopic_2026-02.zim"
         ;;
     3)
-        echo "Pobieranie Wikipedii TOP MAXI..."
-        wget --limit-rate=5m -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_top_maxi_2026-01.zim"
+        echo "[*] Pobieranie Wikipedii TOP MAXI..."
+        wget -c -P ./data/zim "https://download.kiwix.org/zim/wikipedia/wikipedia_pl_top_maxi_2026-01.zim"
         ;;
     4)
-        echo "Pominięto pobieranie Wikipedii."
+        echo "[*] Pominięto pobieranie Wikipedii."
         ;;
     *)
-        echo "Nieznany wybór. Pomijam pobieranie."
+        echo "[!] Nieznany wybór. Pomijam pobieranie."
         ;;
 esac
 
-echo "========================================"
-echo " Ustawianie prywatnej sieci (Tryb AP)   "
-echo "========================================"
+# ------------------------------
+# ZDEJMOWANIE BLOKAD SIECIOWYCH
+# ------------------------------
+if [ "$IS_PENDRIVE" = "1" ]; then
+    echo ""
+    echo "[*] Pobieranie zakończone! Wyłączam ochronę termiczną..."
+    for IFACE in $INTERFACES; do
+        if ip link show "$IFACE" &> /dev/null; then
+            sudo wondershaper -c -a "$IFACE" > /dev/null 2>&1
+        fi
+    done
+fi
 
-# Usuwamy starą sieć, jeśli skrypt jest uruchamiany ponownie
+# ------------------------------
+# USTAWIENIE PRYWATNEJ SIECI (TRYB AP)
+# ------------------------------
+echo ""
+echo "[*] Ustawianie prywatnej sieci (Tryb AP)..."
 sudo nmcli connection delete NOMAD_WIFI 2>/dev/null || true
-
-echo "Konfiguruję własny punkt dostępowy Wi-Fi (NOMAD_WIFI)..."
-
-# Tworzymy profil nowej sieci
-sudo nmcli connection add type wifi ifname wlan0 con-name NOMAD_WIFI autoconnect yes ssid NOMAD_WIFI
+sudo nmcli connection add type wifi ifname wlan0 con-name NOMAD_WIFI autoconnect yes ssid NOMAD_WIFI > /dev/null 2>&1
 sudo nmcli connection modify NOMAD_WIFI 802-11-wireless.mode ap 802-11-wireless.band bg ipv4.method shared
 sudo nmcli connection modify NOMAD_WIFI wifi-sec.key-mgmt wpa-psk
 sudo nmcli connection modify NOMAD_WIFI wifi-sec.psk "Nomad123"
 
+# ------------------------------
+# URUCHAMIANIE KOMPONENTÓW
+# ------------------------------
+echo ""
+echo "[*] Uruchamiam wszystkie kontenery (Węzeł staje się aktywny)..."
+sudo docker compose up -d
+
+# ------------------------------
+# PODSUMOWANIE
+# ------------------------------
+echo ""
 echo "========================================"
 echo " INSTALACJA ZAKOŃCZONA SUKCESEM!        "
 echo "========================================"
-echo "Baza wiedzy (Wikipedia) i Mapy są gotowe do działania."
+echo "Baza wiedzy i Mapy są gotowe do działania."
 echo ""
-echo "Aby odciąć się od domowego routera i uruchomić własną sieć Wi-Fi,"
-echo "wpisz teraz w terminalu:"
-echo "sudo nmcli connection up NOMAD_WIFI"
+echo "Aby odciąć się od routera i uruchomić własną sieć Wi-Fi, wpisz:"
+echo "👉 sudo nmcli connection up NOMAD_WIFI"
 echo ""
-echo "UWAGA: Jeśli jesteś podłączony do Malinki przez Wi-Fi, po wpisaniu"
-echo "tej komendy terminal natychmiast zamarznie! Połącz się wtedy z poziomu"
-echo "telefonu lub komputera z nową siecią NOMAD_WIFI (hasło: Nomad123)"
+echo "UWAGA: Jeśli jesteś podłączony przez Wi-Fi, terminal zamarznie!"
+echo "Połącz się wtedy z nową siecią NOMAD_WIFI (hasło: Nomad123)"
 echo "i wpisz w przeglądarce żelazny adres Twojego Węzła Przetrwania:"
 echo "👉 http://10.42.0.1"
 echo "========================================"
-
-# ------------------------------
-# 6. PODSUMOWANIE
-# ------------------------------
-echo ""
-echo "================================================"
-echo " Instalacja wstępna zakończona!"
-
-echo " 1. Przejdź do folderu 'nomad-pl': cd nomad-pl"
-echo " 2. Uruchom serwer komendą: docker compose up -d"
-echo "================================================"
