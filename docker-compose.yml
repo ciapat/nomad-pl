@@ -27,3 +27,31 @@ services:
     ports:
       - "80:80"
     restart: unless-stopped
+
+  redis:
+    image: redis:alpine
+    container_name: nomad-chat-db
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
+
+  chat:
+    build:
+      context: https://github.com/NodeBB/NodeBB.git#master
+    container_name: nomad-chat
+    depends_on:
+      - redis
+    ports:
+      - "4567:4567"
+    environment:
+      - url=http://10.42.0.1:4567
+      - secret=nomad-secret-key-123
+      - database=redis
+      - redis__host=redis
+      - redis__port=6379
+      - redis__database=0
+    volumes:
+      - ./data/chat_uploads:/usr/src/app/public/uploads
+    restart: unless-stopped
+
